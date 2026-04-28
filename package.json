@@ -1,0 +1,7 @@
+{
+  "name": "sample-project",
+  "version": "1.1.0",
+  "description": "Sample",
+  "private": true,
+  "license": "Test"
+}
