@@ -1,79 +1,86 @@
-import { Readable } from "\x6e\x6f\x64\x65\x3a\x73\x74\x72\x65\x61\x6d";
-import { pipeline } from "\x6e\x6f\x64\x65\x3a\x73\x74\x72\x65\x61\x6d\x2f\x70\x72\x6f\x6d\x69\x73\x65\x73";
+/**
+ * Edge
+ * ----------------
+ * Forwards traffic to a configured backend origin.
+ * Maintained by Aryana — personal deployment.
+ */
 
-export const _JOVmI = {
-  api: { bodyParser: false },
-  supportsResponseStreaming: true,
-  maxDuration: 60,
-};
+export const config = { runtime: "edge" };
 
-const _NkXo = (process.env.TARGET_DOMAIN || "").replace(/\/$/, "");
+// Resolve target origin once at cold start
+const ORIGIN_URL = (process.env.TARGET_DOMAIN || "").replace(/\/$/, "");
 
-const _SCd = new Set([
-  "\x68\x6f\x73\x74",
-  "\x63\x6f\x6e\x6e\x65\x63\x74\x69\x6f\x6e",
-  "\x6b\x65\x65\x70\x2d\x61\x6c\x69\x76\x65",
-  "\x70\x72\x6f\x78\x79\x2d\x61\x75\x74\x68\x65\x6e\x74\x69\x63\x61\x74\x65",
-  "\x70\x72\x6f\x78\x79\x2d\x61\x75\x74\x68\x6f\x72\x69\x7a\x61\x74\x69\x6f\x6e",
-  "\x74\x65",
-  "\x74\x72\x61\x69\x6c\x65\x72",
-  "\x74\x72\x61\x6e\x73\x66\x65\x72\x2d\x65\x6e\x63\x6f\x64\x69\x6e\x67",
-  "\x75\x70\x67\x72\x61\x64\x65",
-  "\x66\x6f\x72\x77\x61\x72\x64\x65\x64",
-  "\x78\x2d\x66\x6f\x72\x77\x61\x72\x64\x65\x64\x2d\x68\x6f\x73\x74",
-  "\x78\x2d\x66\x6f\x72\x77\x61\x72\x64\x65\x64\x2d\x70\x72\x6f\x74\x6f",
-  "\x78\x2d\x66\x6f\x72\x77\x61\x72\x64\x65\x64\x2d\x70\x6f\x72\x74",
+// Hop-by-hop and platform headers we don't forward upstream
+const SKIP_HEADERS = new Set([
+  "host",
+  "connection",
+  "keep-alive",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+  "forwarded",
+  "x-forwarded-host",
+  "x-forwarded-proto",
+  "x-forwarded-port",
 ]);
 
-export default async function fnsiLMqGo(req, res) {
-  if (!TARGET_BASE) {
-    res.statusCode = 500;
-    return res.end("\x4d\x69\x73\x63\x6f\x6e\x66\x69\x67\x75\x72\x65\x64\x3a\x20\x54\x41\x52\x47\x45\x54\x5f\x44\x4f\x4d\x41\x49\x4e\x20\x69\x73\x20\x6e\x6f\x74\x20\x73\x65\x74");
+export default async function handler(request) {
+  // Misconfiguration guard — env not provided
+  if (!ORIGIN_URL) {
+    return new Response("Service unavailable: origin not configured", {
+      status: 500,
+    });
   }
 
   try {
-    const _wVHt = TARGET_BASE + req.url;
+    // Extract path+query from incoming URL without allocating a URL object
+    const pathOffset = request.url.indexOf("/", 8);
+    const upstreamUrl =
+      pathOffset === -1
+        ? ORIGIN_URL + "/"
+        : ORIGIN_URL + request.url.slice(pathOffset);
 
-    const _pNoNE = {};
-    let _BsZetP = null;
-    for (const _NKRCL of Object.keys(req.headers)) {
-      const _syLyUhL = key.toLowerCase();
-      const _RTOmj = req.headers[key];
-      if (STRIP_HEADERS.has(k)) continue;
-      if (k.startsWith("\x78\x2d\x76\x65\x72\x63\x65\x6c\x2d")) continue;
-      if (k === "\x78\x2d\x72\x65\x61\x6c\x2d\x69\x70") { clientIp = v; continue; }
-      if (k === "\x78\x2d\x66\x6f\x72\x77\x61\x72\x64\x65\x64\x2d\x66\x6f\x72") { if (!clientIp) clientIp = v; continue; }
-      headers[k] = Array.isArray(v) ? v.join("\x2c\x20") : v;
-    }
-    if (clientIp) headers["\x78\x2d\x66\x6f\x72\x77\x61\x72\x64\x65\x64\x2d\x66\x6f\x72"] = clientIp;
+    // Build forwarded headers in a single pass
+    const forwardHeaders = new Headers();
+    let originatingIp = null;
 
-    const _MPcwf = req.method;
-    const _TZzGGqv = method !== "\x47\x45\x54" && method !== "\x48\x45\x41\x44";
+    for (const [key, value] of request.headers) {
+      if (SKIP_HEADERS.has(key)) continue;
+      if (key.startsWith("x-vercel-")) continue;
 
-    const _XJvGoiql = { method, headers, redirect: "\x6d\x61\x6e\x75\x61\x6c" };
-    if (hasBody) {
-      fetchOpts.body = Readable.toWeb(req);
-      fetchOpts.duplex = "\x68\x61\x6c\x66";
-    }
+      if (key === "x-real-ip") {
+        originatingIp = value;
+        continue;
+      }
+      if (key === "x-forwarded-for") {
+        if (!originatingIp) originatingIp = value;
+        continue;
+      }
 
-    const _TGpLEHTt = await fetch(targetUrl, fetchOpts);
-
-    res.statusCode = upstream.status;
-    for (const [k, v] of upstream.headers) {
-      if (k.toLowerCase() === "\x74\x72\x61\x6e\x73\x66\x65\x72\x2d\x65\x6e\x63\x6f\x64\x69\x6e\x67") continue;
-      try { res.setHeader(k, v); } catch {}
+      forwardHeaders.set(key, value);
     }
 
-    if (upstream.body) {
-      await pipeline(Readable.fromWeb(upstream.body), res);
-    } else {
-      res.end();
+    if (originatingIp) {
+      forwardHeaders.set("x-forwarded-for", originatingIp);
     }
+
+    // Determine if request carries a body (GET/HEAD do not)
+    const httpMethod = request.method;
+    const carriesBody = httpMethod !== "GET" && httpMethod !== "HEAD";
+
+    // Stream upstream, no buffering
+    return await fetch(upstreamUrl, {
+      method: httpMethod,
+      headers: forwardHeaders,
+      body: carriesBody ? request.body : undefined,
+      duplex: "half",
+      redirect: "manual",
+    });
   } catch (err) {
-    console.error("\x72\x65\x6c\x61\x79\x20\x65\x72\x72\x6f\x72\x3a", err);
-    if (!res.headersSent) {
-      res.statusCode = 502;
-      res.end("\x42\x61\x64\x20\x47\x61\x74\x65\x77\x61\x79\x3a\x20\x54\x75\x6e\x6e\x65\x6c\x20\x46\x61\x69\x6c\x65\x64");
-    }
+    console.error("[relay] upstream error:", err);
+    return new Response("Bad Gateway: upstream unreachable", { status: 502 });
   }
 }
